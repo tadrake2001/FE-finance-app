@@ -44,14 +44,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await apiClient.login(credentials)
       
-      if (response.statusCode === 201 && response.data?.access_token) {
-        // Get user data using the access token
-        const userResponse = await apiClient.getCurrentUser()
-        
-        if (userResponse.statusCode === 200 && userResponse.data) {
-          setUser(userResponse.data)
+      // Backend may return 200 or 201 for login
+      if ((response.statusCode === 200 || response.statusCode === 201) && response.data?.access_token) {
+        // Use user from response if available, otherwise fetch from /auth/me
+        if (response.data.user) {
+          setUser(response.data.user)
         } else {
-          throw new Error('Failed to get user data after login')
+          // Get user data using the access token
+          const userResponse = await apiClient.getCurrentUser()
+          
+          if (userResponse.statusCode === 200 && userResponse.data) {
+            setUser(userResponse.data)
+          } else {
+            throw new Error('Failed to get user data after login')
+          }
         }
         
         return Promise.resolve()
@@ -67,14 +73,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await apiClient.googleLogin(code)
       
-      if (response.statusCode === 201 && response.data?.access_token) {
-        // Get user data using the access token
-        const userResponse = await apiClient.getCurrentUser()
-        
-        if (userResponse.statusCode === 200 && userResponse.data) {
-          setUser(userResponse.data)
+      // Backend may return 200 or 201 for login
+      if ((response.statusCode === 200 || response.statusCode === 201) && response.data?.access_token) {
+        // Use user from response if available, otherwise fetch from /auth/me
+        if (response.data.user) {
+          setUser(response.data.user)
         } else {
-          throw new Error('Failed to get user data after Google login')
+          // Get user data using the access token
+          const userResponse = await apiClient.getCurrentUser()
+          
+          if (userResponse.statusCode === 200 && userResponse.data) {
+            setUser(userResponse.data)
+          } else {
+            throw new Error('Failed to get user data after Google login')
+          }
         }
         
         return Promise.resolve()
@@ -92,53 +104,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiClient.register(credentials)
       console.log('AuthContext: Registration response:', response)
       
-      if (response.statusCode === 201) {
+      // Backend may return 200 or 201 for registration
+      if (response.statusCode === 200 || response.statusCode === 201) {
         console.log('AuthContext: Registration successful')
         
-        console.log('AuthContext: Registration successful, auto-login to get tokens...')
+        // If access_token is returned, use it directly
+        if (response.data?.access_token) {
+          if (response.data.user) {
+            setUser(response.data.user)
+            return Promise.resolve()
+          }
+        }
         
-        // Auto-login to get tokens
+        // Otherwise, auto-login to get tokens
+        console.log('AuthContext: Auto-login to get tokens...')
         try {
           const loginResponse = await apiClient.login({
             email: credentials.email,
             password: credentials.password
           })
           
-          if (loginResponse.statusCode === 201 && loginResponse.data?.access_token) {
-            // Get full user data with tokens
-            const userResponse = await apiClient.getCurrentUser()
-            
-            if (userResponse.statusCode === 200 && userResponse.data) {
-              setUser(userResponse.data)
+          if ((loginResponse.statusCode === 200 || loginResponse.statusCode === 201) && loginResponse.data?.access_token) {
+            // Use user from login response if available
+            if (loginResponse.data.user) {
+              setUser(loginResponse.data.user)
             } else {
-              // Fallback to basic user data
-              const userData = {
-                _id: response.data?._id || '',
-                name: credentials.name,
-                email: credentials.email,
-                avatar: ''
+              // Get full user data with tokens
+              const userResponse = await apiClient.getCurrentUser()
+              
+              if (userResponse.statusCode === 200 && userResponse.data) {
+                setUser(userResponse.data)
+              } else {
+                throw new Error('Failed to get user data after registration')
               }
-              setUser(userData)
             }
           } else {
-            // Fallback to basic user data
-            const userData = {
-              _id: response.data?._id || '',
-              name: credentials.name,
-              email: credentials.email,
-              avatar: ''
-            }
-            setUser(userData)
+            throw new Error('Auto-login failed after registration')
           }
         } catch (loginError) {
-          // Fallback to basic user data
-          const userData = {
-            _id: response.data?._id || '',
-            name: credentials.name,
-            email: credentials.email,
-            avatar: ''
-          }
-          setUser(userData)
+          throw new Error('Registration successful but auto-login failed. Please try logging in manually.')
         }
         
         return Promise.resolve()

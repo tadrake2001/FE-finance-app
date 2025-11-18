@@ -1,6 +1,7 @@
 import { ApiResponse, User, Transaction, Account, Budget, Investment, LoginCredentials, RegisterCredentials, AuthResponse, RegisterResponse } from './types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
+const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || ''
+const API_BASE_URL = RAW_BASE ? RAW_BASE.replace(/\/+$/, '') + '/api' : '/api'
 
 
 class ApiClient {
@@ -43,7 +44,7 @@ class ApiClient {
         // If 401 Unauthorized, try to refresh token
         if (response.status === 401 && this.refresh_token && endpoint !== '/auth/refresh') {
           try {
-            await this.refreshAccessToken()
+            await this.refreshaccess_token()
             // Retry the original request with new access token
             return this.request(endpoint, options)
           } catch (refreshError) {
@@ -65,7 +66,7 @@ class ApiClient {
 
   // Authentication
   async login(credentials: LoginCredentials): Promise<ApiResponse<AuthResponse>> {
-    const response = await this.request<AuthResponse>('/auth/login', {
+    const response = await this.request<any>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     })
@@ -73,44 +74,89 @@ class ApiClient {
     if (response.statusCode === 201 && response.data?.access_token) {
       this.access_token = response.data.access_token
       this.refresh_token = response.data.refresh_token || null
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && this.access_token) {
         localStorage.setItem('access_token', this.access_token)
-        if (this.refresh_token) {
+        if (this.refresh_token && typeof this.refresh_token === 'string') {
           localStorage.setItem('refresh_token', this.refresh_token)
+        }
+      }
+      
+      // Map backend user format to frontend format
+      if (response.data.user) {
+        response.data.user = {
+          _id: response.data.user.id,
+          email: response.data.user.email,
+          name: response.data.user.fullName || response.data.user.name || '',
+          avatar: response.data.user.avatar || '',
+          createdAt: response.data.user.createdAt,
+          updatedAt: response.data.user.updatedAt,
         }
       }
     }
     
-    return response
+    return response as ApiResponse<AuthResponse>
   }
 
   async googleLogin(code: string): Promise<ApiResponse<AuthResponse>> {
-    const response = await this.request<AuthResponse>('/auth/google/callback', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
+    // Note: Backend uses GET /auth/google/callback with OAuth flow
+    // This method may need to be adjusted based on actual Google OAuth implementation
+    const response = await this.request<any>('/auth/google/callback', {
+      method: 'GET',
     })
     
     if (response.statusCode === 201 && response.data?.access_token) {
       this.access_token = response.data.access_token
       this.refresh_token = response.data.refresh_token || null
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && this.access_token) {
         localStorage.setItem('access_token', this.access_token)
-        if (this.refresh_token) {
+        if (this.refresh_token && typeof this.refresh_token === 'string') {
           localStorage.setItem('refresh_token', this.refresh_token)
+        }
+      }
+      
+      // Map backend user format to frontend format
+      if (response.data.user) {
+        response.data.user = {
+          _id: response.data.user.id,
+          email: response.data.user.email,
+          name: response.data.user.fullName || response.data.user.name || '',
+          avatar: response.data.user.avatar || '',
+          createdAt: response.data.user.createdAt,
+          updatedAt: response.data.user.updatedAt,
         }
       }
     }
     
-    return response
+    return response as ApiResponse<AuthResponse>
   }
 
   async register(credentials: RegisterCredentials): Promise<ApiResponse<RegisterResponse>> {
-    const response = await this.request<RegisterResponse>('/auth/register', {
+    // Map frontend format (name) to backend format (fullName)
+    const backendCredentials = {
+      email: credentials.email,
+      password: credentials.password,
+      fullName: credentials.name,
+      // Don't send confirmPassword to backend
+    }
+    
+    const response = await this.request<any>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      body: JSON.stringify(backendCredentials),
     })
     
-    return response
+    // Map backend user format to frontend format if user is returned
+    if (response.data?.user) {
+      response.data.user = {
+        _id: response.data.user.id,
+        email: response.data.user.email,
+        name: response.data.user.fullName || response.data.user.name || '',
+        avatar: response.data.user.avatar || '',
+        createdAt: response.data.user.createdAt,
+        updatedAt: response.data.user.updatedAt,
+      }
+    }
+    
+    return response as ApiResponse<RegisterResponse>
   }
 
   logout(): void {
@@ -126,18 +172,18 @@ class ApiClient {
     }
   }
 
-  private async refreshAccessToken(): Promise<void> {
+  private async refreshaccess_token(): Promise<void> {
     if (!this.refresh_token) {
       throw new Error('No refresh token available')
     }
 
-    const refreshToken = this.refresh_token as string
+    const refresh_token = this.refresh_token as string
     const response = await fetch(`${this.baseURL}/auth/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify({ refresh_token: refresh_token }),
     })
 
     if (!response.ok) {
@@ -179,15 +225,55 @@ class ApiClient {
       }
     }
     
-    const response = await this.request<User>('/users/me')
-    return response
+    const response = await this.request<any>('/auth/me')
+    
+    // Map backend user format to frontend format
+    if (response.data) {
+      response.data = {
+        _id: response.data.id,
+        email: response.data.email,
+        name: response.data.fullName || response.data.name || '',
+        avatar: response.data.avatar || '',
+        createdAt: response.data.createdAt,
+        updatedAt: response.data.updatedAt,
+      }
+    }
+    
+    return response as ApiResponse<User>
   }
 
   async updateUser(userData: Partial<User>): Promise<ApiResponse<User>> {
-    return this.request<User>('/users/me', {
+    // Map frontend format to backend format
+    const backendData: any = {
+      ...userData,
+    }
+    if (userData._id) {
+      backendData.id = userData._id
+      delete backendData._id
+    }
+    if (userData.name) {
+      backendData.fullName = userData.name
+      delete backendData.name
+    }
+    
+    const response = await this.request<any>('/users/me', {
       method: 'PUT',
-      body: JSON.stringify(userData),
+      body: JSON.stringify(backendData),
     })
+    
+    // Map response back to frontend format
+    if (response.data) {
+      response.data = {
+        _id: response.data.id,
+        email: response.data.email,
+        name: response.data.fullName || response.data.name || '',
+        avatar: response.data.avatar || '',
+        createdAt: response.data.createdAt,
+        updatedAt: response.data.updatedAt,
+      }
+    }
+    
+    return response as ApiResponse<User>
   }
 
   // Transactions

@@ -2,19 +2,13 @@
 
 import { Button } from '@/components/ui/button'
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '433572055366-paci2dper1vjt85kdnmr9dun6nknv3mf.apps.googleusercontent.com'
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3050/auth/google/callback'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
 export function GoogleLoginButton() {
   const handleGoogleLogin = () => {
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${GOOGLE_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(REDIRECT_URI)}&` +
-      `response_type=code&` +
-      `scope=openid email profile&` +
-      `access_type=offline`
-
-    window.location.href = googleAuthUrl
+    // Redirect to backend OAuth endpoint
+    // Backend will handle Google OAuth and redirect back to frontend
+    window.location.href = `${API_BASE_URL}/api/auth/google/`
   }
 
   return (

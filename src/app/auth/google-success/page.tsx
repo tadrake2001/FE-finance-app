@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function GoogleSuccessPage() {
@@ -11,17 +11,22 @@ export default function GoogleSuccessPage() {
   const { setUserDirectly } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const ranRef = useRef(false)
 
   useEffect(() => {
-    const handleGoogleSuccess = async () => {
-      const accessToken = searchParams.get('access_token')
-      const userId = searchParams.get('user_id')
-      const userName = searchParams.get('user_name')
-      const userEmail = searchParams.get('user_email')
-      const userAvatar = searchParams.get('user_avatar')
+    if (ranRef.current) return
+    ranRef.current = true
 
-      if (!accessToken) {
+    const handleGoogleSuccess = async () => {
+      // Đọc tham số từ URL một lần, tránh phụ thuộc searchParams
+      const params = new URLSearchParams(window.location.search)
+      const access_token = params.get('access_token')
+      const userId = params.get('user_id')
+      const userName = params.get('user_name')
+      const userEmail = params.get('user_email')
+      const userAvatar = params.get('user_avatar')
+
+      if (!access_token) {
         toast({
           title: "Error",
           description: "No access token received from Google login",
@@ -32,27 +37,32 @@ export default function GoogleSuccessPage() {
       }
 
       try {
-        // Store the token
-        localStorage.setItem('access_token', accessToken)
-        console.log('GoogleSuccessPage: access_token saved to localStorage:', accessToken.substring(0, 20) + '...')
-        
-        // Create user object from URL parameters
+        localStorage.setItem('access_token', access_token)
+
         const user = {
           _id: userId || '',
           email: userEmail || '',
-          name: decodeURIComponent(userName || '').replace('undefined', '').trim(),
-          avatar: userAvatar || '', // Will be updated from API call
+          name: userName ? decodeURIComponent(userName).replace(/\+/g, ' ') : '',
+          avatar: userAvatar || '',
         }
 
-        // Update auth context
         setUserDirectly(user)
-        
+
+        try {
+          const { apiClient } = await import('@/lib/api')
+          const userResponse = await apiClient.getCurrentUser()
+          if (userResponse.statusCode === 200 && userResponse.data) {
+            setUserDirectly(userResponse.data)
+          }
+        } catch (error) {
+          console.error('Failed to fetch user data:', error)
+        }
+
         toast({
           title: "Success",
           description: "Logged in with Google successfully",
         })
-        
-        // Redirect to home page
+
         router.push('/')
       } catch (error: any) {
         toast({
@@ -67,7 +77,7 @@ export default function GoogleSuccessPage() {
     }
 
     handleGoogleSuccess()
-  }, [searchParams, toast, router])
+  }, [router, toast, setUserDirectly]) // hoặc để [] nếu linter không bắt buộc
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -90,4 +100,4 @@ export default function GoogleSuccessPage() {
       </div>
     </div>
   )
-} 
+}
